@@ -7,46 +7,58 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-  body, html { margin:0; padding:0; font-family:sans-serif; }
-  #map { height:100vh; }
-
-  .top-bar {
-    position:absolute;
-    top:10px;
-    left:10px;
-    right:10px;
-    z-index:1000;
+  body, html {
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
   }
 
-  input {
-    width:100%;
-    padding:12px;
-    font-size:16px;
-    border-radius:10px;
-    border:none;
+  #map {
+    height: 100vh;
+    width: 100%;
+  }
+
+  .top-bar {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    z-index: 1000;
+  }
+
+  .top-bar input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 10px;
+    border: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   }
 
   .bottom-panel {
-    position:absolute;
-    bottom:0;
-    left:0;
-    right:0;
-    background:white;
-    padding:15px;
-    border-top-left-radius:15px;
-    border-top-right-radius:15px;
-    z-index:1000;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    padding: 14px;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    z-index: 1000;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
   }
 
   .btn {
-    position:absolute;
-    bottom:100px;
-    right:10px;
-    z-index:1000;
-    background:white;
-    padding:10px;
-    border-radius:50%;
-    font-size:18px;
+    position: absolute;
+    bottom: 110px;
+    right: 12px;
+    z-index: 1000;
+    background: white;
+    border: none;
+    padding: 12px;
+    border-radius: 50%;
+    font-size: 18px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   }
 </style>
 </head>
@@ -59,7 +71,7 @@
 
 <div id="map"></div>
 
-<div class="btn" onclick="centerMap()">📍</div>
+<button class="btn" onclick="centerMap()">📍</button>
 
 <div class="bottom-panel">
   <div><b>Distance:</b> <span id="distance">-</span></div>
@@ -69,89 +81,128 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImI2ZmFmNTZlNjliMjRmMWZiMTYxMmM2OGU3MDhjOThlIiwiaCI6Im11cm11cjY0In0=";
+// ===================== MAP SETUP =====================
+let map = L.map("map").setView([0, 0], 2);
 
-let map = L.map('map').setView([0,0], 2);
-let userMarker, routeLine;
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap"
+}).addTo(map);
+
+let userMarker = null;
+let destMarker = null;
+let routeLine = null;
 let userCoords = null;
 
-// Base map
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-// Get GPS
+// ===================== GPS =====================
 function getLocation() {
-  navigator.geolocation.getCurrentPosition(pos => {
-    userCoords = [pos.coords.latitude, pos.coords.longitude];
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      userCoords = [pos.coords.latitude, pos.coords.longitude];
 
-    map.setView(userCoords, 14);
+      map.setView(userCoords, 14);
 
-    if (!userMarker) {
-      userMarker = L.marker(userCoords).addTo(map).bindPopup("You").openPopup();
-    } else {
-      userMarker.setLatLng(userCoords);
+      if (!userMarker) {
+        userMarker = L.marker(userCoords)
+          .addTo(map)
+          .bindPopup("You are here")
+          .openPopup();
+      } else {
+        userMarker.setLatLng(userCoords);
+      }
+    },
+    (err) => {
+      alert("GPS error: " + err.message);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
     }
-  });
+  );
 }
 
-// Center button
+// ===================== CENTER BUTTON =====================
 function centerMap() {
-  if (userCoords) map.setView(userCoords, 14);
+  if (userCoords) {
+    map.setView(userCoords, 14);
+  }
 }
 
-// Search (simple geocoding using Nominatim)
+// ===================== SEARCH (Nominatim) =====================
 document.getElementById("search").addEventListener("change", async (e) => {
   const query = e.target.value;
 
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`
+  );
+
   const data = await res.json();
 
-  if (!data.length) return alert("Not found");
+  if (!data.length) {
+    alert("Location not found");
+    return;
+  }
 
   const dest = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
 
-  L.marker(dest).addTo(map).bindPopup("Destination").openPopup();
+  if (destMarker) map.removeLayer(destMarker);
+
+  destMarker = L.marker(dest)
+    .addTo(map)
+    .bindPopup("Destination")
+    .openPopup();
 
   getRoute(dest);
 });
 
-// Routing
+// ===================== ROUTING (FIXED) =====================
 async function getRoute(dest) {
-  if (!userCoords) return alert("Waiting for GPS");
+  if (!userCoords) {
+    alert("Waiting for GPS...");
+    return;
+  }
 
-  const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
-    method: "POST",
-    headers: {
-      "Authorization": ORS_API_KEY,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      coordinates: [
-        [userCoords[1], userCoords[0]],
-        [dest[1], dest[0]]
-      ]
-    })
-  });
+  try {
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${userCoords[1]},${userCoords[0]};${dest[1]},${dest[0]}` +
+      `?overview=full&geometries=geojson`;
 
-  const data = await res.json();
+    const res = await fetch(url);
+    const data = await res.json();
 
-  const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+    if (!data.routes || !data.routes.length) {
+      console.log(data);
+      alert("Route not found");
+      return;
+    }
 
-  if (routeLine) map.removeLayer(routeLine);
+    const route = data.routes[0];
 
-  routeLine = L.polyline(coords).addTo(map);
+    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
-  map.fitBounds(routeLine.getBounds());
+    if (routeLine) map.removeLayer(routeLine);
 
-  const summary = data.routes[0].summary;
+    routeLine = L.polyline(coords, {
+      color: "blue",
+      weight: 5
+    }).addTo(map);
 
-  document.getElementById("distance").innerText =
-    (summary.distance / 1000).toFixed(2) + " km";
+    map.fitBounds(routeLine.getBounds());
 
-  document.getElementById("time").innerText =
-    Math.round(summary.duration / 60) + " min";
+    document.getElementById("distance").innerText =
+      (route.distance / 1000).toFixed(2) + " km";
+
+    document.getElementById("time").innerText =
+      Math.round(route.duration / 60) + " min";
+
+  } catch (err) {
+    console.error(err);
+    alert("Routing error");
+  }
 }
 
-// Init
+// ===================== INIT =====================
 getLocation();
 </script>
 
