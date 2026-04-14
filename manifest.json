@@ -1,14 +1,13 @@
 {
-  "name": "SchemaApp",
-  "short_name": "Schema",
+  "name": "Google Maps Style Navigation",
+  "short_name": "GMaps Nav",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#ffffff",
-  "description": "SchemaApp by William Lundberg.",
+  "theme_color": "#1a73e8",
+  "description": "Navigation app with Google Maps style UI and real-time GPS tracking",
   "orientation": "portrait-primary",
-  "id": "william.ll.app",
-  "iarc_rating_id": "e58c174a-81d2-5c3c-32cc-34b8de4a52e9",
+  "id": "maps.navigation.app",
   "lang": "en",
   "dir": "ltr",
   "launch_handler": {
@@ -44,5 +43,5 @@
       "type": "image/png"
     }
   ],
-  "prefer_related_applications": true
+  "prefer_related_applications": false
 }
