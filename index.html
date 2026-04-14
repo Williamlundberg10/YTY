@@ -1,62 +1,158 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GPS Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Maps App</title>
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
-  <style>
-    #map { height: 100vh; }
-  </style>
+<style>
+  body, html { margin:0; padding:0; font-family:sans-serif; }
+  #map { height:100vh; }
+
+  .top-bar {
+    position:absolute;
+    top:10px;
+    left:10px;
+    right:10px;
+    z-index:1000;
+  }
+
+  input {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border-radius:10px;
+    border:none;
+  }
+
+  .bottom-panel {
+    position:absolute;
+    bottom:0;
+    left:0;
+    right:0;
+    background:white;
+    padding:15px;
+    border-top-left-radius:15px;
+    border-top-right-radius:15px;
+    z-index:1000;
+  }
+
+  .btn {
+    position:absolute;
+    bottom:100px;
+    right:10px;
+    z-index:1000;
+    background:white;
+    padding:10px;
+    border-radius:50%;
+    font-size:18px;
+  }
+</style>
 </head>
+
 <body>
 
-<button onclick="getLocation()">Get Location</button>
+<div class="top-bar">
+  <input id="search" placeholder="Search destination...">
+</div>
+
 <div id="map"></div>
 
-<!-- Leaflet JS -->
+<div class="btn" onclick="centerMap()">📍</div>
+
+<div class="bottom-panel">
+  <div><b>Distance:</b> <span id="distance">-</span></div>
+  <div><b>Time:</b> <span id="time">-</span></div>
+</div>
+
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-let map;
-let marker;
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImI2ZmFmNTZlNjliMjRmMWZiMTYxMmM2OGU3MDhjOThlIiwiaCI6Im11cm11cjY0In0";
 
-function initMap(lat, lon) {
-  map = L.map('map').setView([lat, lon], 15);
+let map = L.map('map').setView([0,0], 2);
+let userMarker, routeLine;
+let userCoords = null;
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
+// Base map
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-  marker = L.marker([lat, lon]).addTo(map)
-    .bindPopup("You are here")
-    .openPopup();
-}
-
-function updateMap(lat, lon) {
-  if (!map) {
-    initMap(lat, lon);
-  } else {
-    map.setView([lat, lon], 15);
-    marker.setLatLng([lat, lon]);
-  }
-}
-
+// Get GPS
 function getLocation() {
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      updateMap(lat, lon);
-    },
-    (err) => {
-      alert("Error: " + err.message);
-    },
-    { enableHighAccuracy: true }
-  );
+  navigator.geolocation.getCurrentPosition(pos => {
+    userCoords = [pos.coords.latitude, pos.coords.longitude];
+
+    map.setView(userCoords, 14);
+
+    if (!userMarker) {
+      userMarker = L.marker(userCoords).addTo(map).bindPopup("You").openPopup();
+    } else {
+      userMarker.setLatLng(userCoords);
+    }
+  });
 }
+
+// Center button
+function centerMap() {
+  if (userCoords) map.setView(userCoords, 14);
+}
+
+// Search (simple geocoding using Nominatim)
+document.getElementById("search").addEventListener("change", async (e) => {
+  const query = e.target.value;
+
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+  const data = await res.json();
+
+  if (!data.length) return alert("Not found");
+
+  const dest = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+
+  L.marker(dest).addTo(map).bindPopup("Destination").openPopup();
+
+  getRoute(dest);
+});
+
+// Routing
+async function getRoute(dest) {
+  if (!userCoords) return alert("Waiting for GPS");
+
+  const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
+    method: "POST",
+    headers: {
+      "Authorization": ORS_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      coordinates: [
+        [userCoords[1], userCoords[0]],
+        [dest[1], dest[0]]
+      ]
+    })
+  });
+
+  const data = await res.json();
+
+  const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+
+  if (routeLine) map.removeLayer(routeLine);
+
+  routeLine = L.polyline(coords).addTo(map);
+
+  map.fitBounds(routeLine.getBounds());
+
+  const summary = data.routes[0].summary;
+
+  document.getElementById("distance").innerText =
+    (summary.distance / 1000).toFixed(2) + " km";
+
+  document.getElementById("time").innerText =
+    Math.round(summary.duration / 60) + " min";
+}
+
+// Init
+getLocation();
 </script>
 
 </body>
